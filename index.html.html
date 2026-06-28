@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mindmap SEM — Back Market | RNCP 34577</title>
+<style>
+  :root {
+    --bg: #0F1117;
+    --surface: #1A1D27;
+    --surface2: #232636;
+    --border: #2E3147;
+    --text: #E8E9F0;
+    --text-muted: #7C7F9A;
+    --blue: #4F8EF7;
+    --blue-light: #1A2E52;
+    --teal: #2EC4A0;
+    --teal-light: #0E2E28;
+    --amber: #F5A623;
+    --amber-light: #2E2010;
+    --coral: #F06B6B;
+    --coral-light: #2E1010;
+    --purple: #9B7EF8;
+    --purple-light: #1E1538;
+    --green: #5BBF7A;
+    --green-light: #102218;
+    --center-bg: #4F8EF7;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    user-select: none;
+  }
+
+  /* CANVAS */
+  #canvas {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #canvas.dragging { cursor: grabbing; }
+
+  #world {
+    position: absolute;
+    width: 2400px;
+    height: 2000px;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  svg#lines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* NODES */
+  .node {
+    position: absolute;
+    border-radius: 14px;
+    padding: 10px 16px;
+    cursor: pointer;
+    border: 1.5px solid;
+    transition: transform 0.15s, box-shadow 0.15s;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .node:hover { transform: scale(1.06); box-shadow: 0 0 20px rgba(79,142,247,0.25); }
+  .node.center {
+    background: var(--blue);
+    border-color: #7AABFF;
+    border-radius: 18px;
+    padding: 16px 28px;
+    box-shadow: 0 0 40px rgba(79,142,247,0.35);
+  }
+  .node.center .node-title { font-size: 20px; font-weight: 600; color: #fff; }
+  .node.center .node-sub { font-size: 11px; color: rgba(255,255,255,0.75); margin-top: 2px; }
+  .node-title { font-size: 13px; font-weight: 600; letter-spacing: 0.01em; }
+  .node-sub { font-size: 10px; margin-top: 2px; opacity: 0.75; }
+
+  .node.blue   { background: var(--blue-light);   border-color: var(--blue);   color: #A8CAFF; }
+  .node.teal   { background: var(--teal-light);   border-color: var(--teal);   color: #7DECD3; }
+  .node.amber  { background: var(--amber-light);  border-color: var(--amber);  color: #FFCC7A; }
+  .node.coral  { background: var(--coral-light);  border-color: var(--coral);  color: #FFB0B0; }
+  .node.purple { background: var(--purple-light); border-color: var(--purple); color: #D4C2FF; }
+  .node.green  { background: var(--green-light);  border-color: var(--green);  color: #9FDFB5; }
+
+  .node.child {
+    border-radius: 10px;
+    padding: 7px 13px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  /* PANEL */
+  #panel {
+    position: fixed;
+    right: 0; top: 0;
+    width: 380px;
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 28px 24px;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    z-index: 100;
+  }
+  #panel.open { transform: translateX(0); }
+
+  #panel-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  #panel-close:hover { background: var(--border); color: var(--text); }
+
+  .panel-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 3px 10px;
+    border-radius: 20px;
+    margin-bottom: 10px;
+  }
+  #panel-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  #panel-formula {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--amber);
+    margin: 12px 0;
+    display: none;
+  }
+  #panel-body {
+    font-size: 14px;
+    color: #B0B3CC;
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+  .panel-section {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .panel-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .panel-section p {
+    font-size: 13px;
+    color: #C0C4D8;
+    line-height: 1.6;
+  }
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .kpi-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+  .kpi-name { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+  .kpi-formula { font-size: 11px; color: var(--amber); font-family: monospace; margin-top: 2px; }
+
+  /* TOOLBAR */
+  #toolbar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 200;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  .tb-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .tb-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--blue); }
+  #tb-label { font-size: 11px; color: var(--text-muted); padding: 0 6px; }
+
+  /* LEGEND */
+  #legend {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 16px;
+    z-index: 200;
+  }
+  .leg-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 8px; }
+  .leg-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; color: var(--text-muted); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* BADGE */
+  #badge {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--text-muted);
+    z-index: 200;
+  }
+  #badge span { color: var(--blue); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div id="legend">
+  <div class="leg-title">Légende</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#4F8EF7"></div>Structure</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#2EC4A0"></div>Mots-clés</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#F5A623"></div>Quality Score / Ad Rank</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#F06B6B"></div>KPIs</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#9B7EF8"></div>Enchères / Campagnes</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#5BBF7A"></div>Remarketing / SEO</div>
+</div>
+
+<div id="badge">RNCP 34577 · <span>Bloc 1 — SEM</span></div>
+
+<div id="canvas">
+  <div id="world">
+    <svg id="lines"></svg>
+  </div>
+</div>
+
+<div id="panel">
+  <button id="panel-close" onclick="closePanel()">✕</button>
+  <div id="panel-tag" class="panel-tag"></div>
+  <div id="panel-title"></div>
+  <div id="panel-formula"></div>
+  <div id="panel-body"></div>
+  <div id="panel-extra"></div>
+</div>
+
+<div id="toolbar">
+  <span id="tb-label">Navigation :</span>
+  <button class="tb-btn" onclick="zoom(1.2)">+ Zoom</button>
+  <button class="tb-btn" onclick="zoom(0.8)">− Zoom</button>
+  <button class="tb-btn" onclick="resetView()">⌂ Recentrer</button>
+  <button class="tb-btn" onclick="closePanel()">✕ Fermer panneau</button>
+</div>
+
+<script>
+const DATA = {
+  center: { x: 1100, y: 900, label: "SEM", sub: "Search Engine Marketing", color: "center" },
+  nodes: [
+    {
+      id: "structure", x: 680, y: 500, label: "Structure", sub: "3 niveaux imbriqués", color: "blue",
+      tag: "Organisation", tagColor: "#1A2E52", tagText: "#4F8EF7",
+      title: "Structure d'une campagne Google Ads",
+      body: "Une campagne Google Ads se décompose en 3 niveaux imbriqués comme des poupées russes. Chaque niveau a un rôle précis et distinct.",
+      formula: null,
+      example: "Back Market structure ses campagnes ainsi :\n📁 Campagne : \"Smartphones reconditionnés\" — 50€/jour\n  📂 Groupe 1 : \"iPhone reconditionné\"\n    📄 Annonce : \"iPhone 13 garanti, -70% vs neuf\"\n  📂 Groupe 2 : \"Samsung reconditionné\"\n    📄 Annonce : \"Galaxy reconditionné certifié\"",
+      tip: "Règle d'or jury : 1 groupe = 1 thème = 1 landing page. Si tes mots-clés n'ont pas le même thème, ils n'appartiennent pas au même groupe.",
+      children: [
+        { x: 420, y: 340, label: "Campagne", sub: "Budget + réseau + zone géo" },
+        { x: 640, y: 330, label: "Groupe d'annonces", sub: "Thème + mots-clés groupés" },
+        { x: 860, y: 340, label: "Annonce", sub: "Titres + descriptions + URL" },
+      ]
+    },
+    {
+      id: "motscles", x: 1060, y: 440, label: "Mots-clés", sub: "4 types à maîtriser", color: "teal",
+      tag: "Ciblage", tagColor: "#0E2E28", tagText: "#2EC4A0",
+      title: "Les 4 types de mots-clés",
+      body: "Chaque type contrôle à quel point Google peut s'éloigner de ta requête pour déclencher ton annonce. Plus c'est large, plus tu touches de monde — mais moins c'est précis.",
+      formula: null,
+      example: "Back Market sur le mot-clé 'iPhone reconditionné' :\n• surf → Requête large : peut afficher pour 'téléphone pas cher'\n• \"iPhone reconditionné\" → Expression : affiche pour 'acheter iPhone reconditionné'\n• [iPhone reconditionné] → Exact : seulement cette requête précise\n• -gratuit → Négatif : bloque 'iPhone reconditionné gratuit'",
+      tip: "Piège jury : [ ] = mot-clé exact (cage fermée). \" \" = expression exacte (un peu de liberté). Ne jamais les confondre !",
+      children: [
+        { x: 880, y: 290, label: "surf", sub: "Requête large — sans symbole" },
+        { x: 1040, y: 280, label: "\"expression\"", sub: "Expression exacte — guillemets" },
+        { x: 1210, y: 290, label: "[exact]", sub: "Mot-clé exact — crochets" },
+        { x: 1360, y: 310, label: "-négatif", sub: "Exclusion — tiret" },
+      ]
+    },
+    {
+      id: "qs", x: 1460, y: 520, label: "Quality Score", sub: "Note 1 à 10 par Google", color: "amber",
+      tag: "Qualité", tagColor: "#2E2010", tagText: "#F5A623",
+      title: "Quality Score — Score de qualité",
+      body: "Google attribue une note de 1 à 10 à chaque mot-clé. Plus ton score est élevé, moins tu paies et mieux tu es positionné. Google récompense la pertinence et la cohérence.",
+      formula: "QS = CTR attendu + Pertinence annonce + Qualité landing page",
+      example: "Back Market sur 'iPhone reconditionné' :\n✅ Annonce : 'iPhone reconditionné garanti Back Market'\n✅ Landing page : page dédiée iPhones reconditionnés\n✅ CTR élevé car offre claire et différenciante\n→ QS = 9/10 → Back Market paie moins que ses concurrents\n   qui ont un QS de 4/10, même avec une enchère plus haute.",
+      tip: "Un QS de 8-10 peut te faire économiser jusqu'à 50% sur ton CPC vs un concurrent avec QS 4. C'est l'avantage compétitif clé du SEM.",
+      children: [
+        { x: 1480, y: 370, label: "CTR attendu", sub: "L'annonce donne envie de cliquer ?" },
+        { x: 1640, y: 400, label: "Pertinence annonce", sub: "Mot-clé = message ?" },
+        { x: 1680, y: 530, label: "Qualité landing page", sub: "Page cohérente avec l'annonce ?" },
+      ]
+    },
+    {
+      id: "kpis", x: 1500, y: 900, label: "KPIs", sub: "Les formules clés", color: "coral",
+      tag: "Mesure", tagColor: "#2E1010", tagText: "#F06B6B",
+      title: "Les KPIs SEM à maîtriser",
+      body: "Les indicateurs de performance permettent de mesurer et d'optimiser une campagne. Le jury attend que tu saches les calculer et les interpréter dans un cas concret.",
+      formula: null,
+      example: "Back Market — campagne iPhones reconditionnés :\nBudget : 2 000€ / Impressions : 50 000 / Clics : 1 000\nVentes : 40 / CA généré : 16 000€\n\n• CTR = 1000/50000×100 = 2%\n• CPC = 2000/1000 = 2€\n• CPA = 2000/40 = 50€\n• ROAS = 16000/2000×100 = 800%\n• Tx conv. = 40/1000×100 = 4%\n→ Campagne très rentable (ROAS 800% = 8€ gagnés pour 1€ investi)",
+      tip: "Confusion classique jury : CTR mesure l'attractivité de l'ANNONCE. Taux de conversion mesure l'efficacité de la LANDING PAGE. Deux étapes différentes du tunnel.",
+      children: [
+        { x: 1680, y: 760, label: "CTR", sub: "Clics ÷ Impressions × 100" },
+        { x: 1700, y: 870, label: "CPC", sub: "Budget ÷ Clics" },
+        { x: 1700, y: 960, label: "CPA", sub: "Budget ÷ Conversions" },
+        { x: 1680, y: 1050, label: "ROAS", sub: "CA ÷ Budget × 100" },
+        { x: 1580, y: 1110, label: "CPM", sub: "Budget ÷ Impressions × 1000" },
+      ]
+    },
+    {
+      id: "encheres", x: 1380, y: 1250, label: "Enchères", sub: "Stratégies d'optimisation", color: "purple",
+      tag: "Budget", tagColor: "#1E1538", tagText: "#9B7EF8",
+      title: "Stratégies d'enchères",
+      body: "La stratégie d'enchères détermine comment Google dépense ton budget. Le choix dépend de ton objectif : visibilité, clics ou conversions.",
+      formula: "Ad Rank = Enchère max × Quality Score × Contexte",
+      example: "Back Market — différents objectifs :\n• Notoriété reconditionnés → CPM (payer pour les vues)\n• Trafic vers le site → Maximiser les clics\n• Inscriptions compte → CPA cible à 15€\n• Ventes iPhones → ROAS cible à 500%\n\nRésultat Ad Rank :\nBack Market : enchère 2€ × QS 9 = Ad Rank 18\nConcurrent : enchère 5€ × QS 3 = Ad Rank 15\n→ Back Market apparaît EN PREMIER malgré une enchère 2,5× plus basse !",
+      tip: "Le ROAS cible est la stratégie reine pour l'e-commerce. Google optimise automatiquement pour maximiser le chiffre d'affaires par rapport au budget investi.",
+      children: [
+        { x: 1200, y: 1350, label: "CPC manuel", sub: "Contrôle total" },
+        { x: 1360, y: 1420, label: "CPA cible", sub: "Coût par acquisition fixé" },
+        { x: 1520, y: 1400, label: "ROAS cible", sub: "ROI e-commerce" },
+        { x: 1650, y: 1330, label: "Max. clics", sub: "Volume de trafic" },
+      ]
+    },
+    {
+      id: "campagnes", x: 1000, y: 1360, label: "Types de campagnes", sub: "Search · Display · Shopping…", color: "purple",
+      tag: "Formats", tagColor: "#1E1538", tagText: "#9B7EF8",
+      title: "Les 5 types de campagnes Google Ads",
+      body: "Chaque type de campagne correspond à un objectif et un placement différent. Le jury peut te demander laquelle choisir selon la situation de Back Market.",
+      formula: null,
+      example: "Back Market — quel type selon l'objectif ?\n• Intention d'achat 'iPhone reconditionné' → Search\n  (l'utilisateur cherche, l'annonce texte apparaît)\n• Notoriété marque reconditionnement → Display\n  (bannière sur des sites d'info tech)\n• Comparaison prix produits → Shopping\n  (fiche produit avec photo + prix dans Google)\n• Campagne YouTube éco-responsabilité → Video\n• Maximiser ventes tous canaux → Performance Max",
+      tip: "Pour l'examen : Search = intention d'achat identifiée. Shopping = e-commerce avec catalogue produits. Performance Max = Google pilote tout automatiquement.",
+      children: [
+        { x: 760, y: 1380, label: "Search", sub: "Résultats de recherche texte" },
+        { x: 900, y: 1460, label: "Display", sub: "Bannières sur sites partenaires" },
+        { x: 1040, y: 1490, label: "Shopping", sub: "Fiches produit avec prix" },
+        { x: 1180, y: 1460, label: "Video", sub: "Annonces YouTube" },
+        { x: 1260, y: 1370, label: "Perf. Max", sub: "Toutes surfaces auto" },
+      ]
+    },
+    {
+      id: "annonce", x: 660, y: 1220, label: "Structure annonce", sub: "Titres · Descriptions · URL", color: "blue",
+      tag: "Création", tagColor: "#1A2E52", tagText: "#4F8EF7",
+      title: "Rédiger une annonce Search",
+      body: "Une annonce Search suit un format strict avec des limites de caractères précises. Chaque élément a un rôle et doit être cohérent avec le mot-clé et la landing page.",
+      formula: "Titre 1 | Titre 2 | Titre 3 (30 car. max chacun)\nDescription 1 + Description 2 (90 car. max chacune)",
+      example: "Annonce Back Market — groupe 'iPhone reconditionné' :\n\n[Sponsorisé]\nBack Market | iPhone Reconditionné | Livraison Gratuite 2j\nwww.backmarket.fr/iphone-reconditionne\n17M clients satisfaits · iPhone testé & garanti 12 mois · Retour\ngratuit 30j · Jusqu'à -70% vs neuf · Paiement en 4× sans frais\n\nExtensions :\n• Liens annexes : iPhone 12 | iPhone 13 | iPhone 14 | Avis clients\n• Accroche : '100% contrôlé' · 'Garantie 12 mois'\n• Avis : ★★★★★ 4.8/5 — 17M avis",
+      tip: "Les extensions sont gratuites et augmentent la surface de l'annonce = plus de visibilité sans coût supplémentaire. Toujours les activer !",
+      children: [
+        { x: 460, y: 1160, label: "3 titres", sub: "30 caractères max chacun" },
+        { x: 600, y: 1100, label: "2 descriptions", sub: "90 caractères max" },
+        { x: 740, y: 1090, label: "URL affichage", sub: "vs URL destination" },
+        { x: 860, y: 1130, label: "Extensions", sub: "Liens · Avis · Appel · Prix" },
+      ]
+    },
+    {
+      id: "remarketing", x: 620, y: 960, label: "Remarketing", sub: "Recibler les visiteurs", color: "green",
+      tag: "Reciblage", tagColor: "#102218", tagText: "#5BBF7A",
+      title: "Remarketing & Retargeting",
+      body: "Le remarketing consiste à recibler des utilisateurs qui ont déjà interagi avec ta marque. Ils connaissent déjà le produit — le taux de conversion est jusqu'à 3× plus élevé.",
+      formula: null,
+      example: "Parcours remarketing Back Market :\n1. Lucas visite backmarket.fr → regarde un iPhone 13\n2. Il repart sans acheter\n3. Le lendemain : il voit la pub Back Market sur un site météo\n4. 2 jours après : pub iPhone 13 dans son fil YouTube\n5. Il revient et achète → CPA bien inférieur à un nouveau visiteur\n\nAudiences Back Market :\n• Visiteurs page iPhone → annonce iPhone reconditionnés\n• Abandon panier → offre -10% pour finaliser\n• Clients existants → upsell accessoires / autre produit\n• Lookalike → trouver des profils similaires aux acheteurs",
+      tip: "Un visiteur du site a 3× plus de chances de convertir qu'un nouveau visiteur. Le remarketing est souvent la campagne la plus rentable (CPA le plus bas).",
+      children: [
+        { x: 420, y: 880, label: "Visiteurs site", sub: "N'ont pas converti" },
+        { x: 420, y: 970, label: "Abandon panier", sub: "Presque acheteurs" },
+        { x: 420, y: 1060, label: "Clients existants", sub: "Upsell / fidélisation" },
+        { x: 560, y: 1090, label: "Lookalike", sub: "Profils similaires" },
+      ]
+    },
+    {
+      id: "seo", x: 680, y: 740, label: "SEO vs SEM", sub: "Complémentarité", color: "green",
+      tag: "Stratégie", tagColor: "#102218", tagText: "#5BBF7A",
+      title: "SEO et SEM — Complémentarité",
+      body: "SEO et SEM ne s'opposent pas : ils se complètent. Le choix dépend du contexte, du budget, et des objectifs de Back Market à chaque étape.",
+      formula: null,
+      example: "Back Market — arbitrage SEO / SEM :\n\n• Lancement d'une nouvelle catégorie 'vélos reconditionnés'\n  → SEM immédiatement (SEO = 6-12 mois pour se positionner)\n\n• Mot-clé très concurrentiel 'iPhone reconditionné'\n  → SEM + SEO en parallèle (SEM pendant que le SEO monte)\n\n• Période Black Friday\n  → SEM uniquement (campagne courte, résultats immédiats)\n\n• Marque établie, trafic organique fort\n  → SEO principal + SEM sur les termes les plus compétitifs",
+      tip: "Analogie mémorisable : SEO = acheter une maison (long, coûteux, mais tu la possèdes). SEM = louer (immédiat, mais dès que tu arrêtes de payer, tu pars).",
+      children: [
+        { x: 500, y: 680, label: "SEO", sub: "Gratuit · Long terme · Organique" },
+        { x: 700, y: 620, label: "SEM", sub: "Payant · Immédiat · Garanti" },
+        { x: 880, y: 650, label: "Complémentarité", sub: "Les deux = stratégie optimale" },
+      ]
+    },
+  ]
+};
+
+// ---- RENDER WORLD ----
+const world = document.getElementById('world');
+const svgLines = document.getElementById('lines');
+const cx = DATA.center.x, cy = DATA.center.y;
+
+function getCenter(node) {
+  const el = document.getElementById('n-' + (node.id || 'center'));
+  if (!el) return { x: node.x, y: node.y };
+  return { x: node.x + el.offsetWidth/2, y: node.y + el.offsetHeight/2 };
+}
+
+function makeLine(x1, y1, x2, y2, color) {
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+  line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', '1.5');
+  line.setAttribute('stroke-opacity', '0.45');
+  line.setAttribute('stroke-dasharray', '4 3');
+  svgLines.appendChild(line);
+}
+
+const colorMap = {
+  blue:'#4F8EF7', teal:'#2EC4A0', amber:'#F5A623',
+  coral:'#F06B6B', purple:'#9B7EF8', green:'#5BBF7A', center:'#4F8EF7'
+};
+
+// Center node
+const cEl = document.createElement('div');
+cEl.className = 'node center'; cEl.id = 'n-center';
+cEl.style.left = cx + 'px'; cEl.style.top = cy + 'px';
+cEl.innerHTML = `<div class="node-title">${DATA.center.label}</div><div class="node-sub">${DATA.center.sub}</div>`;
+cEl.onclick = () => openPanel({
+  id:'center', tag:'Centre', tagColor:'#1A2E52', tagText:'#4F8EF7',
+  title:'SEM — Search Engine Marketing',
+  body:'Le SEM regroupe toutes les techniques de référencement payant sur les moteurs de recherche. L\'outil principal est Google Ads. Contrairement au SEO (gratuit, long terme), le SEM offre une visibilité immédiate, en échange d\'un budget publicitaire.',
+  formula:'Position annonce = f(Enchère × Quality Score × Contexte)',
+  example:'Back Market investit en SEM pour capter les acheteurs au moment précis où ils cherchent un produit reconditionné. Résultat : présence immédiate en tête des résultats Google pour \'iPhone reconditionné\', \'Samsung reconditionné\', etc.',
+  tip:'Le jury attend que tu différencies clairement SEM (payant, immédiat, Google Ads) de SEO (organique, long terme, optimisation site). Les deux sont complémentaires.'
+});
+world.appendChild(cEl);
+
+// Branch nodes + children
+DATA.nodes.forEach(node => {
+  const el = document.createElement('div');
+  el.className = `node ${node.color}`; el.id = `n-${node.id}`;
+  el.style.left = node.x + 'px'; el.style.top = node.y + 'px';
+  el.innerHTML = `<div class="node-title">${node.label}</div><div class="node-sub">${node.sub}</div>`;
+  el.onclick = () => openPanel(node);
+  world.appendChild(el);
+
+  // Children
+  if (node.children) {
+    node.children.forEach(ch => {
+      const cel = document.createElement('div');
+      cel.className = `node child ${node.color}`;
+      cel.style.left = ch.x + 'px'; cel.style.top = ch.y + 'px';
+      cel.innerHTML = `<div class="node-title">${ch.label}</div><div class="node-sub">${ch.sub}</div>`;
+      cel.onclick = () => openPanel(node);
+      world.appendChild(cel);
+    });
+  }
+});
+
+// Draw lines after layout
+setTimeout(() => {
+  DATA.nodes.forEach(node => {
+    const el = document.getElementById(`n-${node.id}`);
+    const nw = el.offsetWidth, nh = el.offsetHeight;
+    const nx = node.x + nw/2, ny = node.y + nh/2;
+    const cnel = document.getElementById('n-center');
+    const cnw = cnel.offsetWidth, cnh = cnel.offsetHeight;
+    makeLine(nx, ny, cx + cnw/2, cy + cnh/2, colorMap[node.color]);
+
+    if (node.children) {
+      node.children.forEach(ch => {
+        makeLine(ch.x + 60, ch.y + 15, nx, ny, colorMap[node.color]);
+      });
+    }
+  });
+}, 100);
+
+// ---- PANEL ----
+function openPanel(node) {
+  document.getElementById('panel-tag').textContent = node.tag || 'SEM';
+  document.getElementById('panel-tag').style.background = node.tagColor || '#1A2E52';
+  document.getElementById('panel-tag').style.color = node.tagText || '#4F8EF7';
+  document.getElementById('panel-title').textContent = node.title;
+  document.getElementById('panel-body').textContent = node.body;
+
+  const fEl = document.getElementById('panel-formula');
+  if (node.formula) { fEl.textContent = node.formula; fEl.style.display = 'block'; }
+  else { fEl.style.display = 'none'; }
+
+  let extra = '';
+  if (node.example) {
+    extra += `<div class="panel-section">
+      <div class="panel-section-title">Exemple Back Market</div>
+      <p style="white-space:pre-line;font-family:monospace;font-size:12px">${node.example}</p>
+    </div>`;
+  }
+  if (node.id === 'kpis') {
+    extra += `<div class="panel-section">
+      <div class="panel-section-title">Tableau des formules</div>
+      <div class="kpi-grid">
+        ${[['CTR','Clics/Imp×100'],['CPC','Budget/Clics'],['CPA','Budget/Conv.'],['ROAS','CA/Budget×100'],['CPM','Budget/Imp×1000'],['Tx Conv.','Conv./Clics×100']].map(([n,f])=>`
+        <div class="kpi-item"><div class="kpi-name">${n}</div><div class="kpi-formula">${f}</div></div>`).join('')}
+      </div>
+    </div>`;
+  }
+  if (node.tip) {
+    extra += `<div class="panel-section" style="border-color:#F5A623;background:#2E2010">
+      <div class="panel-section-title" style="color:#F5A623">Astuce jury</div>
+      <p style="color:#FFCC7A">${node.tip}</p>
+    </div>`;
+  }
+  document.getElementById('panel-extra').innerHTML = extra;
+  document.getElementById('panel').classList.add('open');
+}
+function closePanel() { document.getElementById('panel').classList.remove('open'); }
+
+// ---- PAN & ZOOM ----
+let scale = 0.55, tx = -300, ty = -200;
+const canvas = document.getElementById('canvas');
+
+function applyTransform() {
+  world.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
+}
+applyTransform();
+
+function zoom(factor) {
+  scale = Math.min(2, Math.max(0.25, scale * factor));
+  applyTransform();
+}
+function resetView() { scale = 0.55; tx = -300; ty = -200; applyTransform(); }
+
+let drag = false, startX, startY, startTx, startTy;
+canvas.addEventListener('mousedown', e => {
+  if (e.target.closest('.node')) return;
+  drag = true; canvas.classList.add('dragging');
+  startX = e.clientX; startY = e.clientY; startTx = tx; startTy = ty;
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  tx = startTx + (e.clientX - startX);
+  ty = startTy + (e.clientY - startY);
+  applyTransform();
+});
+window.addEventListener('mouseup', () => { drag = false; canvas.classList.remove('dragging'); });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom(e.deltaY < 0 ? 1.1 : 0.9);
+}, { passive: false });
+
+// Touch support
+let lastDist = null;
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    drag = true;
+    startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+    startTx = tx; startTy = ty;
+  }
+});
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (lastDist) zoom(dist / lastDist);
+    lastDist = dist;
+  } else if (drag && e.touches.length === 1) {
+    tx = startTx + (e.touches[0].clientX - startX);
+    ty = startTy + (e.touches[0].clientY - startY);
+    applyTransform();
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', () => { drag = false; lastDist = null; });
+</script>
+</body>
+</html>
